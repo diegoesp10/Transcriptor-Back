@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MeetingTranscriber.Domain/MeetingTranscriber.Domain.csproj" />
+    <Project Path="src/MeetingTranscriber.Application/MeetingTranscriber.Application.csproj" />
+    <Project Path="src/MeetingTranscriber.Infrastructure/MeetingTranscriber.Infrastructure.csproj" />
+    <Project Path="src/MeetingTranscriber.Api/MeetingTranscriber.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MeetingTranscriber.Checks/MeetingTranscriber.Checks.csproj" />
+  </Folder>
+</Solution>

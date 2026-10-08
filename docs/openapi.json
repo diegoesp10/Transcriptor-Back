@@ -1,0 +1,2907 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "Meeting Transcriber API",
+    "description": "Transcripción asíncrona de reuniones en audio/vídeo. Subir el archivo binario, consultar estado y descargar el resultado. Los endpoints /api requieren X-Api-Key; /health es público. Los motores de IA son locales y las etiquetas de hablantes se mantienen durante toda la reunión.",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Servidor que publica este contrato"
+    }
+  ],
+  "paths": {
+    "/api/errors": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "Consultar errores recientes y sus identificadores de correlación",
+        "operationId": "GetErrors",
+        "parameters": [
+          {
+            "name": "meetingId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "correlationId",
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "minLength": 0,
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "in": "query",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ErrorLogEntry"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ErrorLogEntry"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ErrorLogEntry"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Fallo interno controlado con código seguro y correlación.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Comprobar que la API responde",
+        "description": "No requiere clave. No comprueba conectividad con SQL Server, FFmpeg ni el proveedor.",
+        "operationId": "GetHealth",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Fallo interno controlado con código seguro y correlación.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [ ]
+      }
+    },
+    "/api/meetings/{id}/local-export": {
+      "get": {
+        "tags": [
+          "Meeting artifacts"
+        ],
+        "summary": "Obtener archivos y destino para la exportación a carpeta local",
+        "description": "La carpeta y su permiso se gestionan en el navegador. Nunca enviar una ruta local al backend. Las nuevas reuniones se conservan temporalmente hasta exportación o vencimiento.",
+        "operationId": "GetLocalExport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID UUID de la reunión devuelto al subir el archivo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalExportResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalExportResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalExportResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Fallo interno controlado con código seguro y correlación.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/meetings/{id}/recording": {
+      "get": {
+        "tags": [
+          "Meeting artifacts"
+        ],
+        "summary": "Descargar el original temporal por streaming",
+        "operationId": "DownloadRecording",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID UUID de la reunión devuelto al subir el archivo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Fallo interno controlado con código seguro y correlación.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/meetings/{id}/local-export/confirm": {
+      "post": {
+        "tags": [
+          "Meeting artifacts"
+        ],
+        "summary": "Confirmar archivos guardados y eliminar la copia temporal del servidor",
+        "description": "Elimina grabación y transcripción SQL de una reunión finalizada. El frontal debe guardar también el resumen que quiera conservar antes de llamar. Las copias de proveedor y backups no se eliminan con esta llamada.",
+        "operationId": "ConfirmLocalExport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID UUID de la reunión devuelto al subir el archivo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmLocalExportRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmLocalExportRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmLocalExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Fallo interno controlado con código seguro y correlación.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/meetings": {
+      "post": {
+        "tags": [
+          "Meetings"
+        ],
+        "summary": "Subir un audio o vídeo para transcribir",
+        "description": "Devuelve 202 cuando el archivo y el trabajo se han guardado. Consultar GetMeeting hasta Completed o Failed. Un error de procesamiento posterior se comunica en el estado del trabajo.",
+        "operationId": "SubmitMeeting",
+        "parameters": [
+          {
+            "name": "fileName",
+            "in": "query",
+            "description": "Nombre original con extensión: .mp3, .wav, .m4a, .flac, .ogg, .mp4, .mov, .mkv, .webm o .aac.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "description": "Idioma ISO de dos letras. Si se omite o está vacío, se utiliza es.",
+            "schema": {
+              "type": "string",
+              "default": "es"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Contenido binario del audio o vídeo. No usar JSON, base64 ni multipart/form-data. Límite configurable, 2.000.000.000 bytes por defecto.",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Trabajo aceptado. Consultar la URL de Location para seguir el progreso.",
+            "headers": {
+              "Location": {
+                "description": "Ruta relativa /api/meetings/{id} para consultar el estado.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/meetings/{id}": {
+      "get": {
+        "tags": [
+          "Meetings"
+        ],
+        "summary": "Consultar estado y progreso de una reunión",
+        "description": "Estados: Queued, Processing, Completed y Failed. El progreso corresponde a fragmentos completados. No devuelve el texto transcrito.",
+        "operationId": "GetMeeting",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID UUID de la reunión devuelto al subir el archivo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/meetings/{id}/transcript": {
+      "get": {
+        "tags": [
+          "Meetings"
+        ],
+        "summary": "Obtener la transcripción en JSON",
+        "description": "Disponible solo en Completed. Tiempos en segundos desde el inicio. La diarización local conserva etiquetas Hablante 1, Hablante 2 entre fragmentos; speaker null indica atribución incierta.",
+        "operationId": "GetTranscript",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID UUID de la reunión devuelto al subir el archivo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/meetings/{id}/transcript.txt": {
+      "get": {
+        "tags": [
+          "Meetings"
+        ],
+        "summary": "Descargar la transcripción como TXT",
+        "description": "Devuelve un archivo UTF-8 con Content-Disposition: attachment. Disponible solo en Completed.",
+        "operationId": "DownloadTranscript",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID UUID de la reunión devuelto al subir el archivo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Content-Disposition": {
+                "description": "attachment; filename={id}.txt",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/meetings/{id}/retry": {
+      "post": {
+        "tags": [
+          "Meetings"
+        ],
+        "summary": "Reintentar una reunión fallida",
+        "description": "Solo admite Failed. Borra los segmentos anteriores y reencola el procesamiento local completo, dentro del límite de reintentos. No requiere cuerpo.",
+        "operationId": "RetryMeeting",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID UUID de la reunión devuelto al subir el archivo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Trabajo aceptado. Consultar la URL de Location para seguir el progreso.",
+            "headers": {
+              "Location": {
+                "description": "Ruta relativa /api/meetings/{id} para consultar el estado.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/meetings/{id}/summary": {
+      "post": {
+        "tags": [
+          "Meeting artifacts"
+        ],
+        "summary": "Generar un borrador de resumen con puntos destacados y referencias",
+        "description": "Requiere transcripción completada y Ollama con un modelo local descargado. Genera resumen, decisiones, tareas y preguntas con referencias a segmentos. No lo persiste. Límite: 500.000 caracteres; procesa reuniones largas por partes.",
+        "operationId": "GenerateMeetingSummary",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID UUID de la reunión devuelto al subir el archivo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingSummaryResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingSummaryResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeetingSummaryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Gateway Timeout",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Fallo interno controlado con código seguro y correlación.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    },
+    "/api/transcription/configuration": {
+      "get": {
+        "tags": [
+          "Transcription"
+        ],
+        "summary": "Comprobar los motores locales de transcripción, hablantes y resumen",
+        "description": "No devuelve secretos ni rutas. Ready comprueba archivos locales; SummaryReady consulta Ollama. La precisión requiere validar grabaciones reales.",
+        "operationId": "GetTranscriptionConfiguration",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionConfigurationResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionConfigurationResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptionConfigurationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acceso no permitido o IP bloqueada temporalmente por abuso. Problem Details incluye code y correlationId. Si hay Retry-After, esperar esos segundos.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite por IP, endpoint, ráfaga o concurrencia alcanzado. Repetir rechazos puede activar un bloqueo temporal. Respetar Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos de espera antes de otra petición.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Fallo interno controlado con código seguro y correlación.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Capacidad de admisión temporal agotada. Respetar Retry-After cuando esté presente.",
+            "headers": {
+              "X-Correlation-ID": {
+                "description": "Identificador para consultar el registro de diagnóstico.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Si está presente, segundos que esperar antes de repetir.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKey": [ ]
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiProblem": {
+        "required": [
+          "status",
+          "title",
+          "code",
+          "correlationId"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "Código estable del catálogo de errores."
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        }
+      },
+      "ConfirmLocalExportRequest": {
+        "required": [
+          "filesSaved"
+        ],
+        "type": "object",
+        "properties": {
+          "filesSaved": {
+            "type": "boolean",
+            "description": "El frontal debe confirmar que ha guardado y cerrado los archivos locales antes de solicitar el borrado."
+          }
+        }
+      },
+      "ErrorLogEntry": {
+        "required": [
+          "source",
+          "code",
+          "correlationId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ErrorSource"
+          },
+          "code": {
+            "$ref": "#/components/schemas/FailureCode"
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "meetingId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "endpoint": {
+            "type": "string",
+            "nullable": true
+          },
+          "httpStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "providerStatus": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "providerCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "providerRequestId": {
+            "type": "string",
+            "nullable": true
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "chunkIndex": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "exceptionType": {
+            "type": "string",
+            "nullable": true
+          },
+          "stackTrace": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ErrorResponse": {
+        "required": [
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ErrorSource": {
+        "enum": [
+          "Api",
+          "Transcription",
+          "Summary",
+          "Worker"
+        ],
+        "type": "string"
+      },
+      "FailureCode": {
+        "enum": [
+          "UnexpectedError",
+          "ProcessingFailed",
+          "WorkerInterrupted",
+          "WorkerPersistenceFailed",
+          "ApiRequestFailed",
+          "MissingProviderKey",
+          "FFmpegUnavailable",
+          "MediaProcessingTimeout",
+          "InvalidMediaOrMissingAudio",
+          "ChunkTooLarge",
+          "NoAudio",
+          "ProviderTimeout",
+          "ProviderUnavailable",
+          "ProviderAuthenticationFailed",
+          "ProviderAccessDenied",
+          "ProviderRateLimited",
+          "ProviderQuotaExceeded",
+          "ProviderSpendLimitExceeded",
+          "ProviderAudioTooLarge",
+          "ProviderInvalidRequest",
+          "ProviderModelUnavailable",
+          "ProviderInvalidResponse",
+          "SummaryUnavailable",
+          "SummaryInputTooLarge",
+          "SummaryInvalidResponse",
+          "WhisperModelMissing",
+          "WhisperRuntimeUnavailable",
+          "WhisperInferenceFailed",
+          "DiarizationRuntimeUnavailable",
+          "DiarizationModelMissing",
+          "DiarizationFailed",
+          "LocalInferenceTimeout",
+          "LocalInferenceBusy",
+          "SummaryModelMissing",
+          "SummaryModelNotLocal",
+          "MeetingNotFound",
+          "RecordingNotFound",
+          "TranscriptNotCompleted",
+          "MeetingRetryLimitExceeded",
+          "MeetingNotFailedOrRetryLimitExceeded",
+          "LocalFilesNotSaved",
+          "MeetingStillActive",
+          "InvalidRequest",
+          "UnsupportedMediaType",
+          "UploadTooLarge",
+          "EmptyUpload",
+          "UnsupportedMediaFormat",
+          "FileNameTooLong",
+          "InvalidLanguage",
+          "TranscriptEmpty",
+          "RequestValidationFailed",
+          "AuthenticationRequired",
+          "AccessDenied",
+          "GlobalRequestLimited",
+          "ServerConcurrencyLimited",
+          "SecurityCapacityReached",
+          "RequestBurstLimited",
+          "RequestConcurrencyLimited",
+          "ClientTemporarilyBlocked",
+          "RequestRateLimited",
+          "HttpMethodNotAllowed",
+          "RequestBodyTooLarge",
+          "InvalidHttpRequest",
+          "HttpsRequired",
+          "ResourceNotFound"
+        ],
+        "type": "string"
+      },
+      "HealthResponse": {
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "JobStatus": {
+        "enum": [
+          "Queued",
+          "Processing",
+          "Completed",
+          "Failed"
+        ],
+        "type": "string"
+      },
+      "LocalArtifact": {
+        "required": [
+          "kind",
+          "fileName",
+          "contentType",
+          "url",
+          "method",
+          "available"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "method": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LocalExportResponse": {
+        "required": [
+          "meetingId",
+          "folderName",
+          "destination",
+          "temporaryExpiresAt",
+          "canConfirmExport",
+          "artifacts"
+        ],
+        "type": "object",
+        "properties": {
+          "meetingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "folderName": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "temporaryExpiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "canConfirmExport": {
+            "type": "boolean"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocalArtifact"
+            }
+          }
+        }
+      },
+      "MeetingStatusResponse": {
+        "required": [
+          "id",
+          "fileName",
+          "language",
+          "createdAt",
+          "status",
+          "completedChunks",
+          "totalChunks",
+          "errorCode",
+          "temporaryExpiresAt",
+          "retryCount",
+          "errorMessage"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "completedChunks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalChunks": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorCode": {
+            "type": "string",
+            "description": "Código de fallo sin contenido confidencial; null cuando no hay error.",
+            "nullable": true
+          },
+          "temporaryExpiresAt": {
+            "type": "string",
+            "description": "Caducidad de la copia temporal del servidor. El borrado se realiza al finalizar o confirmar la exportación local.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "retryCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Explicación controlada del fallo; nunca contiene el mensaje bruto del proveedor.",
+            "nullable": true
+          }
+        }
+      },
+      "MeetingSummary": {
+        "required": [
+          "overview",
+          "highlights",
+          "decisions",
+          "actionItems",
+          "openQuestions"
+        ],
+        "type": "object",
+        "properties": {
+          "overview": {
+            "type": "string"
+          },
+          "highlights": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SummaryPoint"
+            }
+          },
+          "decisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SummaryPoint"
+            }
+          },
+          "actionItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SummaryPoint"
+            }
+          },
+          "openQuestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SummaryPoint"
+            }
+          }
+        }
+      },
+      "MeetingSummaryResponse": {
+        "required": [
+          "meetingId",
+          "generatedAt",
+          "requiresHumanReview",
+          "summary"
+        ],
+        "type": "object",
+        "properties": {
+          "meetingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requiresHumanReview": {
+            "type": "boolean"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MeetingSummary"
+          }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "RetryResponse": {
+        "required": [
+          "id",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        }
+      },
+      "SummaryPoint": {
+        "required": [
+          "text",
+          "evidenceSegmentIndices"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "evidenceSegmentIndices": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "TranscriptionConfigurationResponse": {
+        "required": [
+          "provider",
+          "model",
+          "modelAvailable",
+          "ffmpegAvailable",
+          "diarizationEnabled",
+          "diarizationAvailable",
+          "ready",
+          "errorCode",
+          "summaryProvider",
+          "summaryModel",
+          "summaryReady",
+          "summaryErrorCode"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "modelAvailable": {
+            "type": "boolean"
+          },
+          "ffmpegAvailable": {
+            "type": "boolean"
+          },
+          "diarizationEnabled": {
+            "type": "boolean"
+          },
+          "diarizationAvailable": {
+            "type": "boolean"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "summaryProvider": {
+            "type": "string"
+          },
+          "summaryModel": {
+            "type": "string"
+          },
+          "summaryReady": {
+            "type": "boolean"
+          },
+          "summaryErrorCode": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "TranscriptResponse": {
+        "required": [
+          "id",
+          "language",
+          "timing",
+          "speakerScope",
+          "segments"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "language": {
+            "type": "string"
+          },
+          "timing": {
+            "$ref": "#/components/schemas/TranscriptTiming"
+          },
+          "speakerScope": {
+            "type": "string",
+            "description": "meeting para diarización global local; chunk en resultados antiguos. Las etiquetas no identifican nombres reales."
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscriptSegment"
+            }
+          }
+        }
+      },
+      "TranscriptSegment": {
+        "required": [
+          "startSeconds",
+          "endSeconds",
+          "text",
+          "speaker"
+        ],
+        "type": "object",
+        "properties": {
+          "startSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "endSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "text": {
+            "type": "string"
+          },
+          "speaker": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "TranscriptTiming": {
+        "enum": [
+          "chunk",
+          "segment"
+        ],
+        "type": "string"
+      }
+    },
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "description": "Clave de acceso a este backend. Los motores de IA se ejecutan localmente.",
+        "name": "X-Api-Key",
+        "in": "header"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Diagnostics"
+    },
+    {
+      "name": "Health"
+    },
+    {
+      "name": "Meeting artifacts"
+    },
+    {
+      "name": "Meetings"
+    },
+    {
+      "name": "Transcription"
+    }
+  ]
+}

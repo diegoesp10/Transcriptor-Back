@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+.cli/
+data/
+tools/ffmpeg/
+tools/whisper/models/
+tools/diarization/
+scripts/__pycache__/
+tests/python/__pycache__/
+.vs/
+*.user
+appsettings.Local.json
